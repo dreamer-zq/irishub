@@ -1,24 +1,25 @@
 package gov
 
 import (
+	"github.com/irisnet/irishub/app/v1/gov/internal/keeper"
+	"github.com/irisnet/irishub/app/v1/gov/internal/types"
 	"strconv"
 
-	"github.com/irisnet/irishub/app/v1/gov/tags"
 	sdk "github.com/irisnet/irishub/types"
 )
 
 // Handle all "gov" type messages.
-func NewHandler(keeper Keeper) sdk.Handler {
+func NewHandler(keeper keeper.Keeper) sdk.Handler {
 	return func(ctx sdk.Context, msg sdk.Msg) sdk.Result {
 		switch msg := msg.(type) {
-		case MsgSubmitProposal,
-			MsgSubmitSoftwareUpgradeProposal,
-			MsgSubmitTokenAdditionProposal,
-			MsgSubmitCommunityTaxUsageProposal:
+		case types.MsgSubmitProposal,
+			types.MsgSubmitSoftwareUpgradeProposal,
+			types.MsgSubmitTokenAdditionProposal,
+			types.MsgSubmitCommunityTaxUsageProposal:
 			return handleMsgSubmitProposal(ctx, keeper, msg)
-		case MsgDeposit:
+		case types.MsgDeposit:
 			return handleMsgDeposit(ctx, keeper, msg)
-		case MsgVote:
+		case types.MsgVote:
 			return handleMsgVote(ctx, keeper, msg)
 		default:
 			errMsg := "Unrecognized gov msg type"
@@ -27,7 +28,7 @@ func NewHandler(keeper Keeper) sdk.Handler {
 	}
 }
 
-func handleMsgSubmitProposal(ctx sdk.Context, keeper Keeper, msg sdk.Msg) sdk.Result {
+func handleMsgSubmitProposal(ctx sdk.Context, keeper keeper.Keeper, msg sdk.Msg) sdk.Result {
 	resTags, err := keeper.SubmitProposal(ctx, msg)
 	if err != nil {
 		return err.Result()
@@ -37,7 +38,7 @@ func handleMsgSubmitProposal(ctx sdk.Context, keeper Keeper, msg sdk.Msg) sdk.Re
 	}
 }
 
-func handleMsgDeposit(ctx sdk.Context, keeper Keeper, msg MsgDeposit) sdk.Result {
+func handleMsgDeposit(ctx sdk.Context, keeper keeper.Keeper, msg types.MsgDeposit) sdk.Result {
 
 	err, votingStarted := keeper.AddDeposit(ctx, msg.ProposalID, msg.Depositor, msg.Amount)
 	if err != nil {
@@ -48,12 +49,12 @@ func handleMsgDeposit(ctx sdk.Context, keeper Keeper, msg MsgDeposit) sdk.Result
 
 	// TODO: Add tag for if voting period started
 	resTags := sdk.NewTags(
-		tags.Depositor, []byte(msg.Depositor.String()),
-		tags.ProposalID, proposalIDBytes,
+		types.Depositor, []byte(msg.Depositor.String()),
+		types.ProposalID, proposalIDBytes,
 	)
 
 	if votingStarted {
-		resTags = resTags.AppendTag(tags.VotingPeriodStart, proposalIDBytes)
+		resTags = resTags.AppendTag(types.VotingPeriodStart, proposalIDBytes)
 	}
 
 	return sdk.Result{
@@ -61,7 +62,7 @@ func handleMsgDeposit(ctx sdk.Context, keeper Keeper, msg MsgDeposit) sdk.Result
 	}
 }
 
-func handleMsgVote(ctx sdk.Context, keeper Keeper, msg MsgVote) sdk.Result {
+func handleMsgVote(ctx sdk.Context, keeper keeper.Keeper, msg types.MsgVote) sdk.Result {
 
 	err := keeper.AddVote(ctx, msg.ProposalID, msg.Voter, msg.Option)
 	if err != nil {
@@ -71,8 +72,8 @@ func handleMsgVote(ctx sdk.Context, keeper Keeper, msg MsgVote) sdk.Result {
 	proposalIDBytes := []byte(strconv.FormatUint(msg.ProposalID, 10))
 
 	resTags := sdk.NewTags(
-		tags.Voter, []byte(msg.Voter.String()),
-		tags.ProposalID, proposalIDBytes,
+		types.Voter, []byte(msg.Voter.String()),
+		types.ProposalID, proposalIDBytes,
 	)
 	return sdk.Result{
 		Tags: resTags,

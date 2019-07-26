@@ -1,4 +1,4 @@
-package gov
+package types
 
 import (
 	"fmt"
@@ -25,6 +25,14 @@ const (
 	MIN_IMPORTANT_NUM     = 1
 	MIN_NORMAL_NUM        = 1
 )
+
+type Param struct {
+	Subspace string `json:"subspace"`
+	Key      string `json:"key"`
+	Value    string `json:"value"`
+}
+
+type Params []Param
 
 var _ params.ParamSet = (*GovParams)(nil)
 
@@ -361,7 +369,7 @@ func DefaultParamsForTest() GovParams {
 	}
 }
 
-func validateParams(p GovParams) sdk.Error {
+func ValidateParams(p GovParams) sdk.Error {
 	if err := validateDepositProcedure(DepositProcedure{
 		MaxDepositPeriod: p.CriticalDepositPeriod,
 		MinDeposit:       p.CriticalMinDeposit,

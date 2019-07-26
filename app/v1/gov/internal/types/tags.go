@@ -1,5 +1,5 @@
 // nolint
-package tags
+package types
 
 import (
 	sdk "github.com/irisnet/irishub/types"
@@ -19,7 +19,7 @@ var (
 	VotingPeriodStart = "voting-period-start"
 	Depositor         = "depositor"
 	Voter             = "voter"
-	Param             = "param"
+	TagParam          = "param"
 	Usage             = "usage"
 	Percent           = "percent"
 	DestAddress       = "dest-address"

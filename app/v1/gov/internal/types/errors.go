@@ -1,9 +1,8 @@
 //nolint
-package gov
+package types
 
 import (
 	"fmt"
-
 	sdk "github.com/irisnet/irishub/types"
 )
 

@@ -1,4 +1,4 @@
-package gov
+package keeper
 
 import (
 	sdk "github.com/irisnet/irishub/types"

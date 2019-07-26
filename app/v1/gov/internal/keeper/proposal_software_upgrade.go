@@ -1,7 +1,8 @@
-package gov
+package keeper
 
 import (
 	"fmt"
+	"github.com/irisnet/irishub/app/v1/gov/internal/types"
 	sdk "github.com/irisnet/irishub/types"
 )
 
@@ -24,32 +25,32 @@ func (sp *SoftwareUpgradeProposal) Validate(ctx sdk.Context, k Keeper, verify bo
 		return err
 	}
 
-	if !k.protocolKeeper.IsValidVersion(ctx, sp.ProtocolDefinition.Version) {
-		return ErrCodeInvalidVersion(k.codespace, sp.ProtocolDefinition.Version)
+	if !k.pk.IsValidVersion(ctx, sp.ProtocolDefinition.Version) {
+		return types.ErrCodeInvalidVersion(k.codespace, sp.ProtocolDefinition.Version)
 	}
 
 	if uint64(ctx.BlockHeight()) > sp.ProtocolDefinition.Height {
-		return ErrCodeInvalidSwitchHeight(k.codespace, uint64(ctx.BlockHeight()), sp.ProtocolDefinition.Height)
+		return types.ErrCodeInvalidSwitchHeight(k.codespace, uint64(ctx.BlockHeight()), sp.ProtocolDefinition.Height)
 	}
 
-	_, found := k.guardianKeeper.GetProfiler(ctx, sp.GetProposer())
+	_, found := k.gk.GetProfiler(ctx, sp.GetProposer())
 	if !found {
-		return ErrNotProfiler(k.codespace, sp.GetProposer())
+		return types.ErrNotProfiler(k.codespace, sp.GetProposer())
 	}
 
-	if _, ok := k.protocolKeeper.GetUpgradeConfig(ctx); ok {
-		return ErrSwitchPeriodInProcess(k.codespace)
+	if _, ok := k.pk.GetUpgradeConfig(ctx); ok {
+		return types.ErrSwitchPeriodInProcess(k.codespace)
 	}
 	return nil
 }
 
 func (sp *SoftwareUpgradeProposal) Execute(ctx sdk.Context, gk Keeper) sdk.Error {
-	if _, ok := gk.protocolKeeper.GetUpgradeConfig(ctx); ok {
+	if _, ok := gk.pk.GetUpgradeConfig(ctx); ok {
 		ctx.Logger().Info("Execute SoftwareProposal Failure", "info",
 			fmt.Sprintf("Software Upgrade Switch Period is in process."))
 		return nil
 	}
-	if !gk.protocolKeeper.IsValidVersion(ctx, sp.ProtocolDefinition.Version) {
+	if !gk.pk.IsValidVersion(ctx, sp.ProtocolDefinition.Version) {
 		ctx.Logger().Info("Execute SoftwareProposal Failure", "info",
 			fmt.Sprintf("version [%v] in SoftwareUpgradeProposal isn't valid ", sp.ProposalID))
 		return nil
@@ -60,7 +61,7 @@ func (sp *SoftwareUpgradeProposal) Execute(ctx sdk.Context, gk Keeper) sdk.Error
 		return nil
 	}
 
-	gk.protocolKeeper.SetUpgradeConfig(ctx, sdk.NewUpgradeConfig(sp.ProposalID, sp.ProtocolDefinition))
+	gk.pk.SetUpgradeConfig(ctx, sdk.NewUpgradeConfig(sp.ProposalID, sp.ProtocolDefinition))
 
 	ctx.Logger().Info("Execute SoftwareProposal Success")
 

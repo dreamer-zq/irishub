@@ -1,26 +1,21 @@
-package gov
+package keeper
 
-import sdk "github.com/irisnet/irishub/types"
+import (
+	"github.com/irisnet/irishub/app/v1/gov/internal/types"
+	sdk "github.com/irisnet/irishub/types"
+)
 
 const (
 	Insert string = "insert"
 	Update string = "update"
 )
 
-type Param struct {
-	Subspace string `json:"subspace"`
-	Key      string `json:"key"`
-	Value    string `json:"value"`
-}
-
-type Params []Param
-
 // Implements Proposal Interface
 var _ Proposal = (*ParameterProposal)(nil)
 
 type ParameterProposal struct {
 	BasicProposal
-	Params Params `json:"params"`
+	Params types.Params `json:"params"`
 }
 
 func (pp *ParameterProposal) Validate(ctx sdk.Context, k Keeper, verify bool) sdk.Error {
@@ -34,7 +29,7 @@ func (pp *ParameterProposal) Validate(ctx sdk.Context, k Keeper, verify bool) sd
 			return err
 		}
 	} else {
-		return ErrInvalidParam(DefaultCodespace, param.Subspace)
+		return types.ErrInvalidParam(types.DefaultCodespace, param.Subspace)
 	}
 	return nil
 }
@@ -52,7 +47,7 @@ func (pp *ParameterProposal) Execute(ctx sdk.Context, k Keeper) sdk.Error {
 	value, _ := paramSet.Validate(param.Key, param.Value)
 	subspace, found := k.paramsKeeper.GetSubspace(param.Subspace)
 	if found {
-		SetParameterMetrics(k.metrics, param.Key, value)
+		types.SetParameterMetrics(k.Metrics, param.Key, value)
 		subspace.Set(ctx, []byte(param.Key), value)
 		ctx.Logger().Info("Execute ParameterProposal Success", "key", param.Key, "value", param.Value)
 	} else {

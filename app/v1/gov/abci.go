@@ -1,9 +1,9 @@
 package gov
 
 import (
+	"github.com/irisnet/irishub/app/v1/gov/internal/types"
 	"strconv"
 
-	"github.com/irisnet/irishub/app/v1/gov/tags"
 	sdk "github.com/irisnet/irishub/types"
 	tmstate "github.com/tendermint/tendermint/state"
 )
@@ -19,74 +19,55 @@ func EndBlocker(ctx sdk.Context, keeper Keeper) (resTags sdk.Tags) {
 		ctx.Logger().Info("SystemHalt Start!!!")
 	}
 
-	inactiveIterator := keeper.InactiveProposalQueueIterator(ctx, ctx.BlockHeader().Time)
-	defer inactiveIterator.Close()
-	for ; inactiveIterator.Valid(); inactiveIterator.Next() {
-		var proposalID uint64
-		keeper.cdc.MustUnmarshalBinaryLengthPrefixed(inactiveIterator.Value(), &proposalID)
-		inactiveProposal := keeper.GetProposal(ctx, proposalID)
-		keeper.SubProposalNum(ctx, inactiveProposal.GetProposalLevel())
-		keeper.DeleteDeposits(ctx, proposalID)
-		keeper.DeleteProposal(ctx, proposalID)
-
-		resTags = resTags.AppendTag(tags.Action, tags.ActionProposalDropped)
-		resTags = resTags.AppendTag(tags.ProposalID, []byte(string(proposalID)))
-
-		keeper.RemoveFromInactiveProposalQueue(ctx, inactiveProposal.GetDepositEndTime(), inactiveProposal.GetProposalID())
+	//pop inactive proposal from inactive queue
+	keeper.PopInactiveProposal(ctx, ctx.BlockHeader().Time, func(p Proposal) {
+		resTags = resTags.AppendTag(types.Action, types.ActionProposalDropped)
+		resTags = resTags.AppendTag(types.ProposalID, []byte(string(p.GetProposalID())))
 		ctx.Logger().Info("Proposal didn't meet minimum deposit; deleted", "ProposalID",
-			inactiveProposal.GetProposalID(), "MinDeposit", keeper.GetDepositProcedure(ctx, inactiveProposal.GetProposalLevel()).MinDeposit,
-			"ActualDeposit", inactiveProposal.GetTotalDeposit(),
+			p.GetProposalID(), "MinDeposit", keeper.GetDepositProcedure(ctx, p.GetProposalLevel()).MinDeposit,
+			"ActualDeposit", p.GetTotalDeposit(),
 		)
-	}
+		keeper.DeleteDeposits(ctx, p.GetProposalID())
+		keeper.DeleteProposal(ctx, p.GetProposalID())
+		keeper.SubProposalNum(ctx, p.GetProposalLevel())
+	})
 
-	activeIterator := keeper.ActiveProposalQueueIterator(ctx, ctx.BlockHeader().Time)
-	defer activeIterator.Close()
-	for ; activeIterator.Valid(); activeIterator.Next() {
-		var proposalID uint64
-		keeper.cdc.MustUnmarshalBinaryLengthPrefixed(activeIterator.Value(), &proposalID)
-		activeProposal := keeper.GetProposal(ctx, proposalID)
-		result, tallyResults, votingVals := tally(ctx, keeper, activeProposal)
-
+	//pop active proposal from active queue
+	keeper.PopActiveProposal(ctx, ctx.BlockHeader().Time, func(p Proposal) {
+		result, tallyResults, votingVals := keeper.Tally(ctx, p)
 		var action []byte
-		if result == PASS {
-			keeper.metrics.ProposalStatus.With(ProposalIDLabel, strconv.FormatUint(proposalID, 10)).Set(2)
-			keeper.RefundDeposits(ctx, activeProposal.GetProposalID())
-			activeProposal.SetStatus(StatusPassed)
-			action = tags.ActionProposalPassed
-			activeProposal.Execute(ctx, keeper)
-		} else if result == REJECT {
-			keeper.metrics.ProposalStatus.With(ProposalIDLabel, strconv.FormatUint(proposalID, 10)).Set(3)
-			keeper.RefundDeposits(ctx, activeProposal.GetProposalID())
-			activeProposal.SetStatus(StatusRejected)
-			action = tags.ActionProposalRejected
-		} else if result == REJECTVETO {
-			keeper.metrics.ProposalStatus.With(ProposalIDLabel, strconv.FormatUint(proposalID, 10)).Set(3)
-			keeper.DeleteDeposits(ctx, activeProposal.GetProposalID())
-			activeProposal.SetStatus(StatusRejected)
-			action = tags.ActionProposalRejected
-		}
-		keeper.RemoveFromActiveProposalQueue(ctx, activeProposal.GetVotingEndTime(), activeProposal.GetProposalID())
-		activeProposal.SetTallyResult(tallyResults)
-		keeper.SetProposal(ctx, activeProposal)
-		ctx.Logger().Info("Proposal tallied", "ProposalID", activeProposal.GetProposalID(), "result", result, "tallyResults", tallyResults)
-		resTags = resTags.AppendTag(tags.Action, action)
-		resTags = resTags.AppendTag(tags.ProposalID, []byte(string(proposalID)))
-
-		for _, valAddr := range keeper.GetValidatorSet(ctx, proposalID) {
-			if _, ok := votingVals[valAddr.String()]; !ok {
-				val := keeper.ds.GetValidatorSet().Validator(ctx, valAddr)
-				if val != nil && val.GetStatus() == sdk.Bonded {
-					keeper.ds.GetValidatorSet().Slash(ctx,
-						val.GetConsAddr(),
-						ctx.BlockHeight(),
-						val.GetPower().RoundInt64(),
-						keeper.GetTallyingProcedure(ctx, activeProposal.GetProposalLevel()).Penalty)
-				}
-			}
+		switch result {
+		case PASS:
+			keeper.Metrics.ProposalStatus.With(types.ProposalIDLabel, strconv.FormatUint(p.GetProposalID(), 10)).Set(2)
+			keeper.RefundDeposits(ctx, p.GetProposalID())
+			p.SetStatus(StatusPassed)
+			action = types.ActionProposalPassed
+			p.Execute(ctx, keeper)
+			break
+		case REJECT:
+			keeper.Metrics.ProposalStatus.With(types.ProposalIDLabel, strconv.FormatUint(p.GetProposalID(), 10)).Set(3)
+			keeper.RefundDeposits(ctx, p.GetProposalID())
+			p.SetStatus(StatusRejected)
+			action = types.ActionProposalRejected
+			break
+		case REJECTVETO:
+			keeper.Metrics.ProposalStatus.With(types.ProposalIDLabel, strconv.FormatUint(p.GetProposalID(), 10)).Set(3)
+			keeper.DeleteDeposits(ctx, p.GetProposalID())
+			p.SetStatus(StatusRejected)
+			action = types.ActionProposalRejected
 		}
 
-		keeper.SubProposalNum(ctx, activeProposal.GetProposalLevel())
-		keeper.DeleteValidatorSet(ctx, activeProposal.GetProposalID())
-	}
+		p.SetTallyResult(tallyResults)
+		keeper.SetProposal(ctx, p)
+
+		keeper.Slash(ctx, p, votingVals)
+		keeper.SubProposalNum(ctx, p.GetProposalLevel())
+		keeper.DeleteValidatorSet(ctx, p.GetProposalID())
+
+		resTags = resTags.AppendTag(types.Action, action)
+		resTags = resTags.AppendTag(types.ProposalID, []byte(string(p.GetProposalID())))
+
+		ctx.Logger().Info("Proposal tallied", "ProposalID", p.GetProposalID(), "result", result, "tallyResults", tallyResults)
+	})
 	return resTags
 }

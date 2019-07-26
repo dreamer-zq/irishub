@@ -1,6 +1,9 @@
-package gov
+package keeper
 
-import sdk "github.com/irisnet/irishub/types"
+import (
+	"github.com/irisnet/irishub/app/v1/gov/internal/types"
+	sdk "github.com/irisnet/irishub/types"
+)
 
 var _ Proposal = (*SystemHaltProposal)(nil)
 
@@ -13,9 +16,9 @@ func (pp *SystemHaltProposal) Validate(ctx sdk.Context, k Keeper, verify bool) s
 		return err
 	}
 
-	_, found := k.guardianKeeper.GetProfiler(ctx, pp.GetProposer())
+	_, found := k.gk.GetProfiler(ctx, pp.GetProposer())
 	if !found {
-		return ErrNotProfiler(k.codespace, pp.GetProposer())
+		return types.ErrNotProfiler(k.codespace, pp.GetProposer())
 	}
 	return nil
 }

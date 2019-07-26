@@ -1,32 +1,25 @@
-package gov
+package keeper
 
 import (
+	"github.com/irisnet/irishub/app/v1/gov/internal/types"
 	sdk "github.com/irisnet/irishub/types"
-)
-
-type ProposalResult string
-
-const (
-	PASS       ProposalResult = "pass"
-	REJECT     ProposalResult = "reject"
-	REJECTVETO ProposalResult = "reject-veto"
 )
 
 // validatorGovInfo used for tallying
 type validatorGovInfo struct {
-	Address             sdk.ValAddress // address of the validator operator
-	Vote                VoteOption     // Vote of the validator
+	Address             sdk.ValAddress   // address of the validator operator
+	Vote                types.VoteOption // Vote of the validator
 	TokenPerShare       sdk.Dec
 	DelegatorShares     sdk.Dec // Total outstanding delegator shares
 	DelegatorDeductions sdk.Dec // Delegator deductions from validator's delegators voting independently
 }
 
-func tally(ctx sdk.Context, keeper Keeper, proposal Proposal) (result ProposalResult, tallyResults TallyResult, votingVals map[string]bool) {
-	results := make(map[VoteOption]sdk.Dec)
-	results[OptionYes] = sdk.ZeroDec()
-	results[OptionAbstain] = sdk.ZeroDec()
-	results[OptionNo] = sdk.ZeroDec()
-	results[OptionNoWithVeto] = sdk.ZeroDec()
+func (keeper Keeper) Tally(ctx sdk.Context, proposal Proposal) (result types.ProposalResult, tallyResults types.TallyResult, votingVals map[string]bool) {
+	results := make(map[types.VoteOption]sdk.Dec)
+	results[types.OptionYes] = sdk.ZeroDec()
+	results[types.OptionAbstain] = sdk.ZeroDec()
+	results[types.OptionNo] = sdk.ZeroDec()
+	results[types.OptionNoWithVeto] = sdk.ZeroDec()
 
 	//voted votingPower
 	totalVotingPower := sdk.ZeroDec()
@@ -39,7 +32,7 @@ func tally(ctx sdk.Context, keeper Keeper, proposal Proposal) (result ProposalRe
 		currValidators[validator.GetOperator().String()] = validatorGovInfo{
 			Address:             validator.GetOperator(),
 			TokenPerShare:       validator.GetTokens().Quo(validator.GetDelegatorShares()),
-			Vote:                OptionEmpty,
+			Vote:                types.OptionEmpty,
 			DelegatorShares:     validator.GetDelegatorShares(),
 			DelegatorDeductions: sdk.ZeroDec(),
 		}
@@ -47,12 +40,7 @@ func tally(ctx sdk.Context, keeper Keeper, proposal Proposal) (result ProposalRe
 		return false
 	})
 	// iterate over all the votes
-	votesIterator := keeper.GetVotes(ctx, proposal.GetProposalID())
-	defer votesIterator.Close()
-	for ; votesIterator.Valid(); votesIterator.Next() {
-		vote := &Vote{}
-		keeper.cdc.MustUnmarshalBinaryLengthPrefixed(votesIterator.Value(), vote)
-
+	keeper.IterateVotes(ctx, proposal.GetProposalID(), func(vote types.Vote) {
 		// if validator, just record it in the map
 		valAddrStr := sdk.ValAddress(vote.Voter).String()
 		if val, ok := currValidators[valAddrStr]; ok {
@@ -77,11 +65,11 @@ func tally(ctx sdk.Context, keeper Keeper, proposal Proposal) (result ProposalRe
 			}
 			return false
 		})
-	}
+	})
 
 	// iterate over the validators again to tally their voting power
 	for _, val := range currValidators {
-		if val.Vote == OptionEmpty {
+		if val.Vote == types.OptionEmpty {
 			continue
 		}
 
@@ -94,34 +82,49 @@ func tally(ctx sdk.Context, keeper Keeper, proposal Proposal) (result ProposalRe
 
 	tallyingProcedure := keeper.GetTallyingProcedure(ctx, proposal.GetProposalLevel())
 
-	tallyResults = TallyResult{
-		Yes:               results[OptionYes].QuoInt(sdk.AttoScaleFactor),
-		Abstain:           results[OptionAbstain].QuoInt(sdk.AttoScaleFactor),
-		No:                results[OptionNo].QuoInt(sdk.AttoScaleFactor),
-		NoWithVeto:        results[OptionNoWithVeto].QuoInt(sdk.AttoScaleFactor),
+	tallyResults = types.TallyResult{
+		Yes:               results[types.OptionYes].QuoInt(sdk.AttoScaleFactor),
+		Abstain:           results[types.OptionAbstain].QuoInt(sdk.AttoScaleFactor),
+		No:                results[types.OptionNo].QuoInt(sdk.AttoScaleFactor),
+		NoWithVeto:        results[types.OptionNoWithVeto].QuoInt(sdk.AttoScaleFactor),
 		SystemVotingPower: systemVotingPower.QuoInt(sdk.AttoScaleFactor),
 	}
 
 	// If no one votes, proposal fails
-	if totalVotingPower.Sub(results[OptionAbstain]).Equal(sdk.ZeroDec()) {
-		return REJECT, tallyResults, votingVals
+	if totalVotingPower.Sub(results[types.OptionAbstain]).Equal(sdk.ZeroDec()) {
+		return types.REJECT, tallyResults, votingVals
 	}
 
 	//if more than 1/3 of voters abstain, proposal fails
 	if tallyingProcedure.Participation.GT(totalVotingPower.Quo(systemVotingPower)) {
-		return REJECT, tallyResults, votingVals
+		return types.REJECT, tallyResults, votingVals
 	}
 
 	// If more than 1/3 of voters veto, proposal fails
-	if results[OptionNoWithVeto].Quo(totalVotingPower).GT(tallyingProcedure.Veto) {
-		return REJECTVETO, tallyResults, votingVals
+	if results[types.OptionNoWithVeto].Quo(totalVotingPower).GT(tallyingProcedure.Veto) {
+		return types.REJECTVETO, tallyResults, votingVals
 	}
 
 	// If more than 1/2 of non-abstaining voters vote Yes, proposal passes
-	if results[OptionYes].Quo(totalVotingPower).GT(tallyingProcedure.Threshold) {
-		return PASS, tallyResults, votingVals
+	if results[types.OptionYes].Quo(totalVotingPower).GT(tallyingProcedure.Threshold) {
+		return types.PASS, tallyResults, votingVals
 	}
 	// If more than 1/2 of non-abstaining voters vote No, proposal fails
 
-	return REJECT, tallyResults, votingVals
+	return types.REJECT, tallyResults, votingVals
+}
+
+func (keeper Keeper) Slash(ctx sdk.Context, p Proposal, voter map[string]bool) {
+	for _, valAddr := range keeper.GetValidatorSet(ctx, p.GetProposalID()) {
+		if _, ok := voter[valAddr.String()]; !ok {
+			val := keeper.ds.GetValidatorSet().Validator(ctx, valAddr)
+			if val != nil && val.GetStatus() == sdk.Bonded {
+				keeper.ds.GetValidatorSet().Slash(ctx,
+					val.GetConsAddr(),
+					ctx.BlockHeight(),
+					val.GetPower().RoundInt64(),
+					keeper.GetTallyingProcedure(ctx, p.GetProposalLevel()).Penalty)
+			}
+		}
+	}
 }

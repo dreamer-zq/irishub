@@ -1,20 +1,15 @@
-package gov
+package keeper
 
 import (
 	"encoding/json"
 	"github.com/irisnet/irishub/app/v1/auth"
-	"github.com/irisnet/irishub/app/v1/gov/tags"
-	"time"
-
-	"github.com/irisnet/irishub/app/v1/bank"
-	"github.com/irisnet/irishub/app/v1/distribution"
+	"github.com/irisnet/irishub/app/v1/gov/internal/types"
+	"github.com/irisnet/irishub/app/v1/params"
 	stakeTypes "github.com/irisnet/irishub/app/v1/stake/types"
 	"github.com/irisnet/irishub/codec"
-	"github.com/irisnet/irishub/modules/guardian"
 	sdk "github.com/irisnet/irishub/types"
-
-	"github.com/irisnet/irishub/app/v1/params"
 	"strconv"
+	"time"
 )
 
 // nolint
@@ -31,18 +26,18 @@ type Keeper struct {
 	// The codec codec for binary encoding/decoding.
 	cdc *codec.Codec
 
-	// The reference to the Param ProtocolKeeper to get and set Global Params
+	// The reference to the TagParam ProtocolKeeper to get and set Global Params
 	paramSpace   params.Subspace
 	paramsKeeper params.Keeper
 
-	protocolKeeper sdk.ProtocolKeeper
+	pk types.ProtocolKeeper
 
 	// The reference to the CoinKeeper to modify balances
-	ck bank.Keeper
+	ck types.BankKeeper
 
-	dk distribution.Keeper
+	dk types.DistrKeeper
 
-	guardianKeeper guardian.Keeper
+	gk types.GuardianKeeper
 
 	// The ValidatorSet to get information about validators
 	vs sdk.ValidatorSet
@@ -53,9 +48,9 @@ type Keeper struct {
 	// Reserved codespace
 	codespace sdk.CodespaceType
 
-	metrics *Metrics
+	Metrics *types.Metrics
 
-	ak AssetKeeper
+	ak types.AssetKeeper
 }
 
 // NewProtocolKeeper returns a governance keeper. It handles:
@@ -63,16 +58,16 @@ type Keeper struct {
 // - depositing funds into proposals, and activating upon sufficient funds being deposited
 // - users voting on proposals, with weight proportional to stake in the system
 // - and tallying the result of the vote.
-func NewKeeper(key sdk.StoreKey, cdc *codec.Codec, paramSpace params.Subspace, paramsKeeper params.Keeper, protocolKeeper sdk.ProtocolKeeper, ck bank.Keeper, dk distribution.Keeper, guardianKeeper guardian.Keeper, ds sdk.DelegationSet, codespace sdk.CodespaceType, metrics *Metrics, ak AssetKeeper) Keeper {
+func NewKeeper(key sdk.StoreKey, cdc *codec.Codec, paramSpace params.Subspace, paramsKeeper params.Keeper, pk types.ProtocolKeeper, ck types.BankKeeper, dk types.DistrKeeper, gk types.GuardianKeeper, ds sdk.DelegationSet, codespace sdk.CodespaceType, metrics *types.Metrics, ak types.AssetKeeper) Keeper {
 	return Keeper{
 		key,
 		cdc,
-		paramSpace.WithTypeTable(ParamTypeTable()),
+		paramSpace.WithTypeTable(types.ParamTypeTable()),
 		paramsKeeper,
-		protocolKeeper,
+		pk,
 		ck,
 		dk,
-		guardianKeeper,
+		gk,
 		ds.GetValidatorSet(),
 		ds,
 		codespace,
@@ -84,20 +79,17 @@ func NewKeeper(key sdk.StoreKey, cdc *codec.Codec, paramSpace params.Subspace, p
 // =====================================================
 // Proposals
 func (keeper Keeper) SubmitProposal(ctx sdk.Context, msg sdk.Msg) (sdk.Tags, sdk.Error) {
-	content := msg.(Content)
+	content := msg.(types.Content)
 
 	// construct a proposal
-	proposal, err := content.GetProposalType().NewProposal(content)
-	if err != nil {
-		return nil, err
-	}
+	proposal := proposalFactory.create(content)
 	pLevel := proposal.GetProposalLevel()
 
 	// validate MinInitialDeposit
 	initialDeposit := content.GetInitialDeposit()
 	minInitialDeposit := keeper.getMinInitialDeposit(ctx, pLevel)
 	if !initialDeposit.IsAllGTE(minInitialDeposit) {
-		return nil, ErrNotEnoughInitialDeposit(DefaultCodespace, initialDeposit, minInitialDeposit)
+		return nil, types.ErrNotEnoughInitialDeposit(types.DefaultCodespace, initialDeposit, minInitialDeposit)
 	}
 
 	// validate proposal
@@ -132,24 +124,24 @@ func (keeper Keeper) SubmitProposal(ctx sdk.Context, msg sdk.Msg) (sdk.Tags, sdk
 	//return tag
 	proposalIDBytes := []byte(strconv.FormatUint(proposal.GetProposalID(), 10))
 	resTags := sdk.NewTags(
-		tags.Proposer, []byte(proposal.GetProposer().String()),
-		tags.ProposalID, proposalIDBytes,
+		types.Proposer, []byte(proposal.GetProposer().String()),
+		types.ProposalID, proposalIDBytes,
 	)
 	if votingStarted {
-		resTags = resTags.AppendTag(tags.VotingPeriodStart, proposalIDBytes)
+		resTags = resTags.AppendTag(types.VotingPeriodStart, proposalIDBytes)
 	}
 
 	switch proposal.GetProposalType() {
-	case ProposalTypeParameter:
+	case types.ProposalTypeParameter:
 		var paramBytes []byte
 		paramBytes, _ = json.Marshal(content.GetParams())
-		resTags = resTags.AppendTag(tags.Param, paramBytes)
-	case ProposalTypeCommunityTaxUsage:
-		msg := msg.(MsgSubmitCommunityTaxUsageProposal)
-		resTags = resTags.AppendTag(tags.DestAddress, []byte(msg.DestAddress.String()))
-	case ProposalTypeTokenAddition:
+		resTags = resTags.AppendTag(types.TagParam, paramBytes)
+	case types.ProposalTypeCommunityTaxUsage:
+		msg := msg.(types.MsgSubmitCommunityTaxUsageProposal)
+		resTags = resTags.AppendTag(types.DestAddress, []byte(msg.DestAddress.String()))
+	case types.ProposalTypeTokenAddition:
 		tokenId := proposal.(*TokenAdditionProposal).FToken.GetUniqueID()
-		resTags = resTags.AppendTag(tags.TokenId, []byte(tokenId))
+		resTags = resTags.AppendTag(types.TokenId, []byte(tokenId))
 	}
 	return resTags, nil
 }
@@ -178,16 +170,13 @@ func (keeper Keeper) SetProposal(ctx sdk.Context, proposal Proposal) {
 
 // Implements sdk.AccountKeeper.
 func (keeper Keeper) DeleteProposal(ctx sdk.Context, proposalID uint64) {
-	keeper.metrics.ProposalStatus.With(ProposalIDLabel, strconv.FormatUint(proposalID, 10)).Set(4)
+	keeper.Metrics.ProposalStatus.With(types.ProposalIDLabel, strconv.FormatUint(proposalID, 10)).Set(4)
 	store := ctx.KVStore(keeper.storeKey)
-	proposal := keeper.GetProposal(ctx, proposalID)
-	keeper.RemoveFromInactiveProposalQueue(ctx, proposal.GetDepositEndTime(), proposalID)
-	keeper.RemoveFromActiveProposalQueue(ctx, proposal.GetVotingEndTime(), proposalID)
 	store.Delete(KeyProposal(proposalID))
 }
 
 // Get Proposal from store by ProposalID
-func (keeper Keeper) GetProposalsFiltered(ctx sdk.Context, voterAddr sdk.AccAddress, depositorAddr sdk.AccAddress, status ProposalStatus, numLatest uint64) []Proposal {
+func (keeper Keeper) GetProposalsFiltered(ctx sdk.Context, voterAddr sdk.AccAddress, depositorAddr sdk.AccAddress, status types.ProposalStatus, numLatest uint64) []Proposal {
 
 	maxProposalID, err := keeper.peekCurrentProposalID(ctx)
 	if err != nil {
@@ -220,7 +209,7 @@ func (keeper Keeper) GetProposalsFiltered(ctx sdk.Context, voterAddr sdk.AccAddr
 			continue
 		}
 
-		if ValidProposalStatus(status) {
+		if types.ValidProposalStatus(status) {
 			if proposal.GetStatus() != status {
 				continue
 			}
@@ -231,11 +220,11 @@ func (keeper Keeper) GetProposalsFiltered(ctx sdk.Context, voterAddr sdk.AccAddr
 	return matchingProposals
 }
 
-func (keeper Keeper) setInitialProposalID(ctx sdk.Context, proposalID uint64) sdk.Error {
+func (keeper Keeper) SetInitialProposalID(ctx sdk.Context, proposalID uint64) sdk.Error {
 	store := ctx.KVStore(keeper.storeKey)
 	bz := store.Get(KeyNextProposalID)
 	if bz != nil {
-		return ErrInvalidGenesis(keeper.codespace, "Initial ProposalID already set")
+		return types.ErrInvalidGenesis(keeper.codespace, "Initial ProposalID already set")
 	}
 	bz = keeper.cdc.MustMarshalBinaryLengthPrefixed(proposalID)
 	store.Set(KeyNextProposalID, bz)
@@ -257,7 +246,7 @@ func (keeper Keeper) getNewProposalID(ctx sdk.Context) (proposalID uint64, err s
 	store := ctx.KVStore(keeper.storeKey)
 	bz := store.Get(KeyNextProposalID)
 	if bz == nil {
-		return 0, ErrInvalidGenesis(keeper.codespace, "InitialProposalID never set")
+		return 0, types.ErrInvalidGenesis(keeper.codespace, "InitialProposalID never set")
 	}
 	keeper.cdc.MustUnmarshalBinaryLengthPrefixed(bz, &proposalID)
 	bz = keeper.cdc.MustMarshalBinaryLengthPrefixed(proposalID + 1)
@@ -270,7 +259,7 @@ func (keeper Keeper) peekCurrentProposalID(ctx sdk.Context) (proposalID uint64, 
 	store := ctx.KVStore(keeper.storeKey)
 	bz := store.Get(KeyNextProposalID)
 	if bz == nil {
-		return 0, ErrInvalidGenesis(keeper.codespace, "InitialProposalID never set")
+		return 0, types.ErrInvalidGenesis(keeper.codespace, "InitialProposalID never set")
 	}
 	keeper.cdc.MustUnmarshalBinaryLengthPrefixed(bz, &proposalID)
 	return proposalID, nil
@@ -280,7 +269,7 @@ func (keeper Keeper) activateVotingPeriod(ctx sdk.Context, proposal Proposal) {
 	proposal.SetVotingStartTime(ctx.BlockHeader().Time)
 	votingPeriod := keeper.GetVotingProcedure(ctx, proposal.GetProposalLevel()).VotingPeriod
 	proposal.SetVotingEndTime(proposal.GetVotingStartTime().Add(votingPeriod))
-	proposal.SetStatus(StatusVotingPeriod)
+	proposal.SetStatus(types.StatusVotingPeriod)
 	keeper.SetProposal(ctx, proposal)
 
 	keeper.RemoveFromInactiveProposalQueue(ctx, proposal.GetDepositEndTime(), proposal.GetProposalID())
@@ -292,13 +281,13 @@ func (keeper Keeper) activateVotingPeriod(ctx sdk.Context, proposal Proposal) {
 // Votes
 
 // Adds a vote on a specific proposal
-func (keeper Keeper) AddVote(ctx sdk.Context, proposalID uint64, voterAddr sdk.AccAddress, option VoteOption) sdk.Error {
+func (keeper Keeper) AddVote(ctx sdk.Context, proposalID uint64, voterAddr sdk.AccAddress, option types.VoteOption) sdk.Error {
 	proposal := keeper.GetProposal(ctx, proposalID)
 	if proposal == nil {
-		return ErrUnknownProposal(keeper.codespace, proposalID)
+		return types.ErrUnknownProposal(keeper.codespace, proposalID)
 	}
-	if proposal.GetStatus() != StatusVotingPeriod {
-		return ErrInactiveProposal(keeper.codespace, proposalID)
+	if proposal.GetStatus() != types.StatusVotingPeriod {
+		return types.ErrInactiveProposal(keeper.codespace, proposalID)
 	}
 
 	validator := keeper.vs.Validator(ctx, sdk.ValAddress(voterAddr))
@@ -309,43 +298,43 @@ func (keeper Keeper) AddVote(ctx sdk.Context, proposalID uint64, voterAddr sdk.A
 			return isDelegator
 		})
 		if !isDelegator {
-			return ErrOnlyValidatorOrDelegatorVote(keeper.codespace, voterAddr)
+			return types.ErrOnlyValidatorOrDelegatorVote(keeper.codespace, voterAddr)
 		}
 	}
 
 	if _, ok := keeper.GetVote(ctx, proposalID, voterAddr); ok {
-		return ErrAlreadyVote(keeper.codespace, voterAddr, proposalID)
+		return types.ErrAlreadyVote(keeper.codespace, voterAddr, proposalID)
 	}
 
-	if !ValidVoteOption(option) {
-		return ErrInvalidVote(keeper.codespace, option)
+	if !types.ValidVoteOption(option) {
+		return types.ErrInvalidVote(keeper.codespace, option)
 	}
 
-	vote := Vote{
+	vote := types.Vote{
 		ProposalID: proposalID,
 		Voter:      voterAddr,
 		Option:     option,
 	}
 	keeper.setVote(ctx, proposalID, voterAddr, vote)
 	if validator != nil {
-		keeper.metrics.Vote.With(ValidatorLabel, validator.GetConsAddr().String(), ProposalIDLabel, strconv.FormatUint(proposalID, 10)).Set(float64(option))
+		keeper.Metrics.Vote.With(types.ValidatorLabel, validator.GetConsAddr().String(), types.ProposalIDLabel, strconv.FormatUint(proposalID, 10)).Set(float64(option))
 	}
 	return nil
 }
 
 // Gets the vote of a specific voter on a specific proposal
-func (keeper Keeper) GetVote(ctx sdk.Context, proposalID uint64, voterAddr sdk.AccAddress) (Vote, bool) {
+func (keeper Keeper) GetVote(ctx sdk.Context, proposalID uint64, voterAddr sdk.AccAddress) (types.Vote, bool) {
 	store := ctx.KVStore(keeper.storeKey)
 	bz := store.Get(KeyVote(proposalID, voterAddr))
 	if bz == nil {
-		return Vote{}, false
+		return types.Vote{}, false
 	}
-	var vote Vote
+	var vote types.Vote
 	keeper.cdc.MustUnmarshalBinaryLengthPrefixed(bz, &vote)
 	return vote, true
 }
 
-func (keeper Keeper) setVote(ctx sdk.Context, proposalID uint64, voterAddr sdk.AccAddress, vote Vote) {
+func (keeper Keeper) setVote(ctx sdk.Context, proposalID uint64, voterAddr sdk.AccAddress, vote types.Vote) {
 	store := ctx.KVStore(keeper.storeKey)
 	bz := keeper.cdc.MustMarshalBinaryLengthPrefixed(vote)
 	store.Set(KeyVote(proposalID, voterAddr), bz)
@@ -357,27 +346,33 @@ func (keeper Keeper) GetVotes(ctx sdk.Context, proposalID uint64) sdk.Iterator {
 	return sdk.KVStorePrefixIterator(store, KeyVotesSubspace(proposalID))
 }
 
-func (keeper Keeper) deleteVote(ctx sdk.Context, proposalID uint64, voterAddr sdk.AccAddress) {
-	store := ctx.KVStore(keeper.storeKey)
-	store.Delete(KeyVote(proposalID, voterAddr))
+func (keeper Keeper) IterateVotes(ctx sdk.Context, proposalID uint64, cb func(v types.Vote)) {
+	iterator := keeper.GetVotes(ctx, proposalID)
+	defer iterator.Close()
+
+	for ; iterator.Valid(); iterator.Next() {
+		vote := &types.Vote{}
+		keeper.cdc.MustUnmarshalBinaryLengthPrefixed(iterator.Value(), vote)
+		cb(*vote)
+	}
 }
 
 // =====================================================
 // Deposits
 
 // Gets the deposit of a specific depositor on a specific proposal
-func (keeper Keeper) GetDeposit(ctx sdk.Context, proposalID uint64, depositorAddr sdk.AccAddress) (Deposit, bool) {
+func (keeper Keeper) GetDeposit(ctx sdk.Context, proposalID uint64, depositorAddr sdk.AccAddress) (types.Deposit, bool) {
 	store := ctx.KVStore(keeper.storeKey)
 	bz := store.Get(KeyDeposit(proposalID, depositorAddr))
 	if bz == nil {
-		return Deposit{}, false
+		return types.Deposit{}, false
 	}
-	var deposit Deposit
+	var deposit types.Deposit
 	keeper.cdc.MustUnmarshalBinaryLengthPrefixed(bz, &deposit)
 	return deposit, true
 }
 
-func (keeper Keeper) setDeposit(ctx sdk.Context, proposalID uint64, depositorAddr sdk.AccAddress, deposit Deposit) {
+func (keeper Keeper) setDeposit(ctx sdk.Context, proposalID uint64, depositorAddr sdk.AccAddress, deposit types.Deposit) {
 	store := ctx.KVStore(keeper.storeKey)
 	bz := keeper.cdc.MustMarshalBinaryLengthPrefixed(deposit)
 	store.Set(KeyDeposit(proposalID, depositorAddr), bz)
@@ -389,12 +384,12 @@ func (keeper Keeper) AddDeposit(ctx sdk.Context, proposalID uint64, depositorAdd
 	// Checks to see if proposal exists
 	proposal := keeper.GetProposal(ctx, proposalID)
 	if proposal == nil {
-		return ErrUnknownProposal(keeper.codespace, proposalID), false
+		return types.ErrUnknownProposal(keeper.codespace, proposalID), false
 	}
 
 	// Check if proposal is still depositable
-	if proposal.GetStatus() != StatusDepositPeriod {
-		return ErrNotInDepositPeriod(keeper.codespace, proposalID), false
+	if proposal.GetStatus() != types.StatusDepositPeriod {
+		return types.ErrNotInDepositPeriod(keeper.codespace, proposalID), false
 	}
 
 	// Send coins from depositor's account to DepositedCoinsAccAddr account
@@ -419,7 +414,7 @@ func (keeper Keeper) AddDeposit(ctx sdk.Context, proposalID uint64, depositorAdd
 	// Add or update deposit object
 	currDeposit, found := keeper.GetDeposit(ctx, proposalID, depositorAddr)
 	if !found {
-		newDeposit := Deposit{depositorAddr, proposalID, depositAmount}
+		newDeposit := types.Deposit{depositorAddr, proposalID, depositAmount}
 		keeper.setDeposit(ctx, proposalID, depositorAddr, newDeposit)
 	} else {
 		currDeposit.Amount = currDeposit.Amount.Plus(depositAmount)
@@ -441,9 +436,9 @@ func (keeper Keeper) RefundDeposits(ctx sdk.Context, proposalID uint64) {
 	depositsIterator := keeper.GetDeposits(ctx, proposalID)
 	defer depositsIterator.Close()
 	depositSum := sdk.Coins{}
-	deposits := []*Deposit{}
+	deposits := []*types.Deposit{}
 	for ; depositsIterator.Valid(); depositsIterator.Next() {
-		deposit := &Deposit{}
+		deposit := &types.Deposit{}
 		keeper.cdc.MustUnmarshalBinaryLengthPrefixed(depositsIterator.Value(), deposit)
 		deposits = append(deposits, deposit)
 		depositSum = depositSum.Plus(deposit.Amount)
@@ -484,7 +479,7 @@ func (keeper Keeper) DeleteDeposits(ctx sdk.Context, proposalID uint64) {
 	defer depositsIterator.Close()
 
 	for ; depositsIterator.Valid(); depositsIterator.Next() {
-		deposit := &Deposit{}
+		deposit := &types.Deposit{}
 		keeper.cdc.MustUnmarshalBinaryLengthPrefixed(depositsIterator.Value(), deposit)
 
 		ctx.CoinFlowTags().AppendCoinFlowTag(ctx, auth.GovDepositCoinsAccAddr.String(), "", deposit.Amount.String(), sdk.GovDepositBurnFlow, "")
@@ -508,7 +503,7 @@ func (keeper Keeper) ActiveProposalQueueIterator(ctx sdk.Context, endTime time.T
 
 // Inserts a ProposalID into the active proposal queue at endTime
 func (keeper Keeper) InsertActiveProposalQueue(ctx sdk.Context, endTime time.Time, proposalID uint64) {
-	keeper.metrics.ProposalStatus.With(ProposalIDLabel, strconv.FormatUint(proposalID, 10)).Set(1)
+	keeper.Metrics.ProposalStatus.With(types.ProposalIDLabel, strconv.FormatUint(proposalID, 10)).Set(1)
 	store := ctx.KVStore(keeper.storeKey)
 	bz := keeper.cdc.MustMarshalBinaryLengthPrefixed(proposalID)
 	store.Set(KeyActiveProposalQueueProposal(endTime, proposalID), bz)
@@ -526,9 +521,37 @@ func (keeper Keeper) InactiveProposalQueueIterator(ctx sdk.Context, endTime time
 	return store.Iterator(PrefixInactiveProposalQueue, sdk.PrefixEndBytes(PrefixInactiveProposalQueueTime(endTime)))
 }
 
+func (keeper Keeper) PopInactiveProposal(ctx sdk.Context, endTime time.Time, cb func(p Proposal)) {
+	store := ctx.KVStore(keeper.storeKey)
+	iterator := store.Iterator(PrefixInactiveProposalQueue, sdk.PrefixEndBytes(PrefixInactiveProposalQueueTime(endTime)))
+
+	defer iterator.Close()
+	for ; iterator.Valid(); iterator.Next() {
+		var proposalID uint64
+		keeper.cdc.MustUnmarshalBinaryLengthPrefixed(iterator.Value(), &proposalID)
+		proposal := keeper.GetProposal(ctx, proposalID)
+		cb(proposal)
+		keeper.RemoveFromInactiveProposalQueue(ctx, proposal.GetDepositEndTime(), proposalID)
+	}
+}
+
+func (keeper Keeper) PopActiveProposal(ctx sdk.Context, endTime time.Time, cb func(p Proposal)) {
+	store := ctx.KVStore(keeper.storeKey)
+	iterator := store.Iterator(PrefixActiveProposalQueue, sdk.PrefixEndBytes(PrefixActiveProposalQueueTime(endTime)))
+
+	defer iterator.Close()
+	for ; iterator.Valid(); iterator.Next() {
+		var proposalID uint64
+		keeper.cdc.MustUnmarshalBinaryLengthPrefixed(iterator.Value(), &proposalID)
+		proposal := keeper.GetProposal(ctx, proposalID)
+		cb(proposal)
+		keeper.RemoveFromActiveProposalQueue(ctx, proposal.GetVotingEndTime(), proposalID)
+	}
+}
+
 // Inserts a ProposalID into the inactive proposal queue at endTime
 func (keeper Keeper) InsertInactiveProposalQueue(ctx sdk.Context, endTime time.Time, proposalID uint64) {
-	keeper.metrics.ProposalStatus.With(ProposalIDLabel, strconv.FormatUint(proposalID, 10)).Set(0)
+	keeper.Metrics.ProposalStatus.With(types.ProposalIDLabel, strconv.FormatUint(proposalID, 10)).Set(0)
 	store := ctx.KVStore(keeper.storeKey)
 	bz := keeper.cdc.MustMarshalBinaryLengthPrefixed(proposalID)
 	store.Set(KeyInactiveProposalQueueProposal(endTime, proposalID), bz)
@@ -672,147 +695,147 @@ func (keeper Keeper) DeleteValidatorSet(ctx sdk.Context, proposalID uint64) {
 }
 
 func (keeper Keeper) GetSystemHaltPeriod(ctx sdk.Context) (SystemHaltPeriod int64) {
-	keeper.paramSpace.Get(ctx, KeySystemHaltPeriod, &SystemHaltPeriod)
+	keeper.paramSpace.Get(ctx, types.KeySystemHaltPeriod, &SystemHaltPeriod)
 	return
 }
 
 // get inflation params from the global param store
-func (keeper Keeper) GetParamSet(ctx sdk.Context) GovParams {
-	var params GovParams
+func (keeper Keeper) GetParamSet(ctx sdk.Context) types.GovParams {
+	var params types.GovParams
 	keeper.paramSpace.GetParamSet(ctx, &params)
 	return params
 }
 
 // set inflation params from the global param store
-func (keeper Keeper) SetParamSet(ctx sdk.Context, params GovParams) {
+func (keeper Keeper) SetParamSet(ctx sdk.Context, params types.GovParams) {
 	keeper.paramSpace.SetParamSet(ctx, &params)
 }
 
-func (keeper Keeper) getMinInitialDeposit(ctx sdk.Context, proposalLevel ProposalLevel) sdk.Coins {
+func (keeper Keeper) getMinInitialDeposit(ctx sdk.Context, proposalLevel types.ProposalLevel) sdk.Coins {
 	minDeposit := keeper.GetDepositProcedure(ctx, proposalLevel).MinDeposit
 	minDepositInt := sdk.NewDecFromInt(minDeposit.AmountOf(stakeTypes.StakeDenom)).Mul(MinDepositRate).RoundInt()
 	return sdk.Coins{sdk.NewCoin(stakeTypes.StakeDenom, minDepositInt)}
 }
 
 // Returns the current Deposit Procedure from the global param store
-func (keeper Keeper) GetDepositProcedure(ctx sdk.Context, p ProposalLevel) DepositProcedure {
+func (keeper Keeper) GetDepositProcedure(ctx sdk.Context, p types.ProposalLevel) types.DepositProcedure {
 	params := keeper.GetParamSet(ctx)
 	switch p {
-	case ProposalLevelCritical:
-		return DepositProcedure{
+	case types.ProposalLevelCritical:
+		return types.DepositProcedure{
 			MinDeposit:       params.CriticalMinDeposit,
 			MaxDepositPeriod: params.CriticalDepositPeriod,
 		}
-	case ProposalLevelImportant:
-		return DepositProcedure{
+	case types.ProposalLevelImportant:
+		return types.DepositProcedure{
 			MinDeposit:       params.ImportantMinDeposit,
 			MaxDepositPeriod: params.ImportantDepositPeriod,
 		}
-	case ProposalLevelNormal:
-		return DepositProcedure{
+	case types.ProposalLevelNormal:
+		return types.DepositProcedure{
 			MinDeposit:       params.NormalMinDeposit,
 			MaxDepositPeriod: params.NormalDepositPeriod,
 		}
 	default:
-		panic("There is no level for this proposal which type is " + p.string())
+		panic("There is no level for this proposal which type is " + p.String())
 	}
 }
 
 // Returns the current Voting Procedure from the global param store
-func (keeper Keeper) GetVotingProcedure(ctx sdk.Context, p ProposalLevel) VotingProcedure {
+func (keeper Keeper) GetVotingProcedure(ctx sdk.Context, p types.ProposalLevel) types.VotingProcedure {
 	params := keeper.GetParamSet(ctx)
 	switch p {
-	case ProposalLevelCritical:
-		return VotingProcedure{
+	case types.ProposalLevelCritical:
+		return types.VotingProcedure{
 			VotingPeriod: params.CriticalVotingPeriod,
 		}
-	case ProposalLevelImportant:
-		return VotingProcedure{
+	case types.ProposalLevelImportant:
+		return types.VotingProcedure{
 			VotingPeriod: params.ImportantVotingPeriod,
 		}
-	case ProposalLevelNormal:
-		return VotingProcedure{
+	case types.ProposalLevelNormal:
+		return types.VotingProcedure{
 			VotingPeriod: params.NormalVotingPeriod,
 		}
 	default:
-		panic("There is no level for this proposal which type is " + p.string())
+		panic("There is no level for this proposal which type is " + p.String())
 	}
 }
 
-func (keeper Keeper) GetMaxNumByProposalLevel(ctx sdk.Context, p ProposalLevel) uint64 {
+func (keeper Keeper) GetMaxNumByProposalLevel(ctx sdk.Context, p types.ProposalLevel) uint64 {
 	params := keeper.GetParamSet(ctx)
 	switch p {
-	case ProposalLevelCritical:
+	case types.ProposalLevelCritical:
 		return params.CriticalMaxNum
 
-	case ProposalLevelImportant:
+	case types.ProposalLevelImportant:
 		return params.ImportantMaxNum
 
-	case ProposalLevelNormal:
+	case types.ProposalLevelNormal:
 		return params.NormalMaxNum
 	default:
-		panic("There is no level for this proposal which type is " + p.string())
+		panic("There is no level for this proposal which type is " + p.String())
 	}
 }
 
 // Returns the current Tallying Procedure from the global param store
-func (keeper Keeper) GetTallyingProcedure(ctx sdk.Context, p ProposalLevel) TallyingProcedure {
+func (keeper Keeper) GetTallyingProcedure(ctx sdk.Context, p types.ProposalLevel) types.TallyingProcedure {
 	params := keeper.GetParamSet(ctx)
 	switch p {
-	case ProposalLevelCritical:
-		return TallyingProcedure{
+	case types.ProposalLevelCritical:
+		return types.TallyingProcedure{
 			Threshold:     params.CriticalThreshold,
 			Veto:          params.CriticalVeto,
 			Participation: params.CriticalParticipation,
 			Penalty:       params.CriticalPenalty,
 		}
-	case ProposalLevelImportant:
-		return TallyingProcedure{
+	case types.ProposalLevelImportant:
+		return types.TallyingProcedure{
 			Threshold:     params.ImportantThreshold,
 			Veto:          params.ImportantVeto,
 			Participation: params.ImportantParticipation,
 			Penalty:       params.ImportantPenalty,
 		}
-	case ProposalLevelNormal:
-		return TallyingProcedure{
+	case types.ProposalLevelNormal:
+		return types.TallyingProcedure{
 			Threshold:     params.NormalThreshold,
 			Veto:          params.NormalVeto,
 			Participation: params.NormalParticipation,
 			Penalty:       params.NormalPenalty,
 		}
 	default:
-		panic("There is no level for this proposal which type is " + p.string())
+		panic("There is no level for this proposal which type is " + p.String())
 	}
 }
 
-func (keeper Keeper) AddProposalNum(ctx sdk.Context, p ProposalLevel, args ...interface{}) {
+func (keeper Keeper) AddProposalNum(ctx sdk.Context, p types.ProposalLevel, args ...interface{}) {
 	switch p {
-	case ProposalLevelCritical:
+	case types.ProposalLevelCritical:
 		proposalID := args[0].(uint64)
 		keeper.AddCriticalProposalNum(ctx, proposalID)
-	case ProposalLevelImportant:
+	case types.ProposalLevelImportant:
 		keeper.AddImportantProposalNum(ctx)
-	case ProposalLevelNormal:
+	case types.ProposalLevelNormal:
 		keeper.AddNormalProposalNum(ctx)
 	default:
-		panic("There is no level for this proposal which type is " + p.string())
+		panic("There is no level for this proposal which type is " + p.String())
 	}
 }
 
-func (keeper Keeper) SubProposalNum(ctx sdk.Context, p ProposalLevel) {
+func (keeper Keeper) SubProposalNum(ctx sdk.Context, p types.ProposalLevel) {
 	switch p {
-	case ProposalLevelCritical:
+	case types.ProposalLevelCritical:
 		keeper.SubCriticalProposalNum(ctx)
-	case ProposalLevelImportant:
+	case types.ProposalLevelImportant:
 		keeper.SubImportantProposalNum(ctx)
-	case ProposalLevelNormal:
+	case types.ProposalLevelNormal:
 		keeper.SubNormalProposalNum(ctx)
 	default:
-		panic("There is no level for this proposal which type is " + p.string())
+		panic("There is no level for this proposal which type is " + p.String())
 	}
 }
 
-func (keeper Keeper) HasReachedTheMaxProposalNum(ctx sdk.Context, p ProposalLevel) (uint64, bool) {
+func (keeper Keeper) HasReachedTheMaxProposalNum(ctx sdk.Context, p types.ProposalLevel) (uint64, bool) {
 	ctx.Logger().Debug("Proposals Distribution",
 		"CriticalProposalNum", keeper.GetCriticalProposalNum(ctx),
 		"ImportantProposalNum", keeper.GetImportantProposalNum(ctx),
@@ -820,11 +843,11 @@ func (keeper Keeper) HasReachedTheMaxProposalNum(ctx sdk.Context, p ProposalLeve
 
 	maxNum := keeper.GetMaxNumByProposalLevel(ctx, p)
 	switch p {
-	case ProposalLevelCritical:
+	case types.ProposalLevelCritical:
 		return keeper.GetCriticalProposalNum(ctx), keeper.GetCriticalProposalNum(ctx) == maxNum
-	case ProposalLevelImportant:
+	case types.ProposalLevelImportant:
 		return keeper.GetImportantProposalNum(ctx), keeper.GetImportantProposalNum(ctx) == maxNum
-	case ProposalLevelNormal:
+	case types.ProposalLevelNormal:
 		return keeper.GetNormalProposalNum(ctx), keeper.GetNormalProposalNum(ctx) == maxNum
 	default:
 		panic("There is no level for this proposal")
@@ -832,5 +855,5 @@ func (keeper Keeper) HasReachedTheMaxProposalNum(ctx sdk.Context, p ProposalLeve
 }
 
 func (keeper Keeper) Init(ctx sdk.Context) {
-	keeper.SetParamSet(ctx, DefaultParams())
+	keeper.SetParamSet(ctx, types.DefaultParams())
 }

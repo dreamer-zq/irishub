@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/irisnet/irishub/app/v1/bank"
+	"github.com/irisnet/irishub/app/v1/gov/internal/keeper"
+	types2 "github.com/irisnet/irishub/app/v1/gov/internal/types"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -265,36 +267,36 @@ func executeGetValidator(t *testing.T, cmdStr string) stake.ValidatorOutput {
 	return validator
 }
 
-func executeGetProposal(t *testing.T, cmdStr string) gov.Proposal {
+func executeGetProposal(t *testing.T, cmdStr string) keeper.Proposal {
 	out, _ := tests.ExecuteT(t, cmdStr, "")
-	var proposal gov.Proposal
+	var proposal keeper.Proposal
 	cdc := app.MakeLatestCodec()
 	err := cdc.UnmarshalJSON([]byte(out), &proposal)
 	require.NoError(t, err, "out %v\n, err %v", out, err)
 	return proposal
 }
 
-func executeGetProposals(t *testing.T, cmdStr string) []gov.Proposal {
+func executeGetProposals(t *testing.T, cmdStr string) []keeper.Proposal {
 	out, _ := tests.ExecuteT(t, cmdStr, "")
-	var proposals []gov.Proposal
+	var proposals []keeper.Proposal
 	cdc := app.MakeLatestCodec()
 	err := cdc.UnmarshalJSON([]byte(out), &proposals)
 	require.NoError(t, err, "out %v\n, err %v", out, err)
 	return proposals
 }
 
-func executeGetVote(t *testing.T, cmdStr string) gov.Vote {
+func executeGetVote(t *testing.T, cmdStr string) types2.Vote {
 	out, _ := tests.ExecuteT(t, cmdStr, "")
-	var vote gov.Vote
+	var vote types2.Vote
 	cdc := app.MakeLatestCodec()
 	err := cdc.UnmarshalJSON([]byte(out), &vote)
 	require.NoError(t, err, "out %v\n, err %v", out, err)
 	return vote
 }
 
-func executeGetVotes(t *testing.T, cmdStr string) []gov.Vote {
+func executeGetVotes(t *testing.T, cmdStr string) []types2.Vote {
 	out, _ := tests.ExecuteT(t, cmdStr, "")
-	var votes []gov.Vote
+	var votes []types2.Vote
 	cdc := app.MakeLatestCodec()
 	err := cdc.UnmarshalJSON([]byte(out), &votes)
 	require.NoError(t, err, "out %v\n, err %v", out, err)
