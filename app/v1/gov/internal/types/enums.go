@@ -34,12 +34,12 @@ type pTypeInfo struct {
 }
 
 var pTypeMap = map[string]pTypeInfo{
-	"PlainText":         {},
-	"Parameter":         {},
-	"SoftwareUpgrade":   {},
-	"SystemHalt":        {},
-	"CommunityTaxUsage": {},
-	"TokenAddition":     {},
+	"PlainText":         {ProposalTypePlainText, ProposalLevelNormal},
+	"Parameter":         {ProposalTypeParameter, ProposalLevelImportant},
+	"SoftwareUpgrade":   {ProposalTypeSoftwareUpgrade, ProposalLevelCritical},
+	"SystemHalt":        {ProposalTypeSystemHalt, ProposalLevelCritical},
+	"CommunityTaxUsage": {ProposalTypeCommunityTaxUsage, ProposalLevelImportant},
+	"TokenAddition":     {ProposalTypeTokenAddition, ProposalLevelImportant},
 }
 
 // String to proposalType byte.  Returns ff if invalid.
