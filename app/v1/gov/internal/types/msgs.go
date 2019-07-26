@@ -376,3 +376,89 @@ func (msg MsgSubmitTokenAdditionProposal) GetSignBytes() []byte {
 	}
 	return sdk.MustSortJSON(b)
 }
+
+// Vote
+type Vote struct {
+	Voter      sdk.AccAddress `json:"voter"`       //  address of the voter
+	ProposalID uint64         `json:"proposal_id"` //  proposalID of the proposal
+	Option     VoteOption     `json:"option"`      //  option from OptionSet chosen by the voter
+}
+
+func (v Vote) String() string {
+	return fmt.Sprintf("TagVoter %s voted with option %s on proposal %d", v.Voter, v.Option, v.ProposalID)
+}
+
+// Votes is a collection of Vote
+type Votes []Vote
+
+func (v Votes) String() string {
+	out := fmt.Sprintf("Votes for Proposal %d:", v[0].ProposalID)
+	for _, vot := range v {
+		out += fmt.Sprintf("\n  %s: %s", vot.Voter, vot.Option)
+	}
+	return out
+}
+
+// Returns whether 2 votes are equal
+func (v Vote) Equals(voteB Vote) bool {
+	return v.Voter.Equals(voteB.Voter) && v.ProposalID == voteB.ProposalID && v.Option == voteB.Option
+}
+
+// Returns whether a vote is empty
+func (v Vote) Empty() bool {
+	voteB := Vote{}
+	return v.Equals(voteB)
+}
+
+// Deposit
+type Deposit struct {
+	Depositor  sdk.AccAddress `json:"depositor"`   //  Address of the depositor
+	ProposalID uint64         `json:"proposal_id"` //  proposalID of the proposal
+	Amount     sdk.Coins      `json:"amount"`      //  Deposit amount
+}
+
+func (d Deposit) String() string {
+	return fmt.Sprintf("Deposit by %s on Proposal %d is for the amount %s",
+		d.Depositor, d.ProposalID, d.Amount.MainUnitString())
+}
+
+func (d Deposit) HumanString(converter sdk.CoinsConverter) string {
+	return fmt.Sprintf("Deposit by %s on Proposal %d is for the amount %s",
+		d.Depositor, d.ProposalID, converter.ToMainUnit(d.Amount))
+}
+
+// Deposits is a collection of depoist
+type Deposits []Deposit
+
+func (d Deposits) String() string {
+	if len(d) == 0 {
+		return "[]"
+	}
+	out := fmt.Sprintf("Deposits for Proposal %d:", d[0].ProposalID)
+	for _, dep := range d {
+		out += fmt.Sprintf("\n  %s: %s", dep.Depositor, dep.Amount.MainUnitString())
+	}
+	return out
+}
+
+func (d Deposits) HumanString(converter sdk.CoinsConverter) string {
+	if len(d) == 0 {
+		return "[]"
+	}
+	out := fmt.Sprintf("Deposits for Proposal %d:", d[0].ProposalID)
+	for _, dep := range d {
+		out += fmt.Sprintf("\n  %s: %s", dep.Depositor, converter.ToMainUnit(dep.Amount))
+	}
+	return out
+}
+
+// Returns whether 2 deposits are equal
+func (d Deposit) Equals(depositB Deposit) bool {
+	return d.Depositor.Equals(depositB.Depositor) && d.ProposalID == depositB.ProposalID && d.Amount.IsEqual(depositB.Amount)
+}
+
+// Returns whether a deposit is empty
+func (d Deposit) Empty() bool {
+	depositB := Deposit{}
+	return d.Equals(depositB)
+}

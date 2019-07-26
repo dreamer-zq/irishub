@@ -21,9 +21,9 @@ func EndBlocker(ctx sdk.Context, keeper Keeper) (resTags sdk.Tags) {
 
 	//pop inactive proposal from inactive queue
 	keeper.PopInactiveProposal(ctx, ctx.BlockHeader().Time, func(p Proposal) {
-		resTags = resTags.AppendTag(types.Action, types.ActionProposalDropped)
-		resTags = resTags.AppendTag(types.ProposalID, []byte(string(p.GetProposalID())))
-		ctx.Logger().Info("Proposal didn't meet minimum deposit; deleted", "ProposalID",
+		resTags = resTags.AppendTag(types.TagAction, types.ActionProposalDropped)
+		resTags = resTags.AppendTag(types.TagProposalID, []byte(string(p.GetProposalID())))
+		ctx.Logger().Info("Proposal didn't meet minimum deposit; deleted", "TagProposalID",
 			p.GetProposalID(), "MinDeposit", keeper.GetDepositProcedure(ctx, p.GetProposalLevel()).MinDeposit,
 			"ActualDeposit", p.GetTotalDeposit(),
 		)
@@ -64,10 +64,10 @@ func EndBlocker(ctx sdk.Context, keeper Keeper) (resTags sdk.Tags) {
 		keeper.SubProposalNum(ctx, p.GetProposalLevel())
 		keeper.DeleteValidatorSet(ctx, p.GetProposalID())
 
-		resTags = resTags.AppendTag(types.Action, action)
-		resTags = resTags.AppendTag(types.ProposalID, []byte(string(p.GetProposalID())))
+		resTags = resTags.AppendTag(types.TagAction, action)
+		resTags = resTags.AppendTag(types.TagProposalID, []byte(string(p.GetProposalID())))
 
-		ctx.Logger().Info("Proposal tallied", "ProposalID", p.GetProposalID(), "result", result, "tallyResults", tallyResults)
+		ctx.Logger().Info("Proposal tallied", "TagProposalID", p.GetProposalID(), "result", result, "tallyResults", tallyResults)
 	})
 	return resTags
 }

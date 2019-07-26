@@ -17,6 +17,7 @@ type (
 	Deposit              = types.Deposit
 	Deposits             = types.Deposits
 	TallyResult          = types.TallyResult
+	UsageType            = types.UsageType
 	QueryProposalParams  = keeper.QueryProposalParams
 	QueryProposalsParams = keeper.QueryProposalsParams
 	QueryVoteParams      = keeper.QueryVoteParams
@@ -24,7 +25,6 @@ type (
 	QueryDepositParams   = keeper.QueryDepositParams
 	QueryDepositsParams  = keeper.QueryDepositsParams
 	QueryTallyParams     = keeper.QueryTallyParams
-	UsageType            = types.UsageType
 )
 
 const (

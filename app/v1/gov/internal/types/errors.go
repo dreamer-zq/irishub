@@ -108,7 +108,7 @@ func ErrInvalidPercent(codespace sdk.CodespaceType, percent sdk.Dec) sdk.Error {
 }
 
 func ErrInvalidUsageType(codespace sdk.CodespaceType, usageType UsageType) sdk.Error {
-	return sdk.NewError(codespace, CodeInvalidUsageType, fmt.Sprintf("Usage Type '%s' is not valid", usageType))
+	return sdk.NewError(codespace, CodeInvalidUsageType, fmt.Sprintf("TagUsage Type '%s' is not valid", usageType))
 }
 
 func ErrNotTrustee(codespace sdk.CodespaceType, trustee sdk.AccAddress) sdk.Error {

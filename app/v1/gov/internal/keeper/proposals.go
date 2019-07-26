@@ -78,7 +78,7 @@ func (bp BasicProposal) String() string {
 	return fmt.Sprintf(`Proposal %d:
   Title:              %s
   Type:               %s
-  Proposer:           %s
+  TagProposer:           %s
   Status:             %s
   Submit Time:        %s
   Deposit End Time:   %s

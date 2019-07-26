@@ -13,15 +13,15 @@ var (
 	ActionProposalPassed   = []byte("proposal-passed")
 	ActionProposalRejected = []byte("proposal-rejected")
 
-	Action            = sdk.TagAction
-	Proposer          = "proposer"
-	ProposalID        = "proposal-id"
-	VotingPeriodStart = "voting-period-start"
-	Depositor         = "depositor"
-	Voter             = "voter"
-	TagParam          = "param"
-	Usage             = "usage"
-	Percent           = "percent"
-	DestAddress       = "dest-address"
-	TokenId           = "token-id"
+	TagAction            = sdk.TagAction
+	TagProposer          = "proposer"
+	TagProposalID        = "proposal-id"
+	TagVotingPeriodStart = "voting-period-start"
+	TagDepositor         = "depositor"
+	TagVoter             = "voter"
+	TagParam             = "param"
+	TagUsage             = "usage"
+	TagPercent           = "percent"
+	TagDestAddress       = "dest-address"
+	TagTokenId           = "token-id"
 )

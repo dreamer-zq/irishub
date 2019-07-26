@@ -49,12 +49,12 @@ func handleMsgDeposit(ctx sdk.Context, keeper keeper.Keeper, msg types.MsgDeposi
 
 	// TODO: Add tag for if voting period started
 	resTags := sdk.NewTags(
-		types.Depositor, []byte(msg.Depositor.String()),
-		types.ProposalID, proposalIDBytes,
+		types.TagDepositor, []byte(msg.Depositor.String()),
+		types.TagProposalID, proposalIDBytes,
 	)
 
 	if votingStarted {
-		resTags = resTags.AppendTag(types.VotingPeriodStart, proposalIDBytes)
+		resTags = resTags.AppendTag(types.TagVotingPeriodStart, proposalIDBytes)
 	}
 
 	return sdk.Result{
@@ -72,8 +72,8 @@ func handleMsgVote(ctx sdk.Context, keeper keeper.Keeper, msg types.MsgVote) sdk
 	proposalIDBytes := []byte(strconv.FormatUint(msg.ProposalID, 10))
 
 	resTags := sdk.NewTags(
-		types.Voter, []byte(msg.Voter.String()),
-		types.ProposalID, proposalIDBytes,
+		types.TagVoter, []byte(msg.Voter.String()),
+		types.TagProposalID, proposalIDBytes,
 	)
 	return sdk.Result{
 		Tags: resTags,

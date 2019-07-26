@@ -124,11 +124,11 @@ func (keeper Keeper) SubmitProposal(ctx sdk.Context, msg sdk.Msg) (sdk.Tags, sdk
 	//return tag
 	proposalIDBytes := []byte(strconv.FormatUint(proposal.GetProposalID(), 10))
 	resTags := sdk.NewTags(
-		types.Proposer, []byte(proposal.GetProposer().String()),
-		types.ProposalID, proposalIDBytes,
+		types.TagProposer, []byte(proposal.GetProposer().String()),
+		types.TagProposalID, proposalIDBytes,
 	)
 	if votingStarted {
-		resTags = resTags.AppendTag(types.VotingPeriodStart, proposalIDBytes)
+		resTags = resTags.AppendTag(types.TagVotingPeriodStart, proposalIDBytes)
 	}
 
 	switch proposal.GetProposalType() {
@@ -138,15 +138,15 @@ func (keeper Keeper) SubmitProposal(ctx sdk.Context, msg sdk.Msg) (sdk.Tags, sdk
 		resTags = resTags.AppendTag(types.TagParam, paramBytes)
 	case types.ProposalTypeCommunityTaxUsage:
 		msg := msg.(types.MsgSubmitCommunityTaxUsageProposal)
-		resTags = resTags.AppendTag(types.DestAddress, []byte(msg.DestAddress.String()))
+		resTags = resTags.AppendTag(types.TagDestAddress, []byte(msg.DestAddress.String()))
 	case types.ProposalTypeTokenAddition:
 		tokenId := proposal.(*TokenAdditionProposal).FToken.GetUniqueID()
-		resTags = resTags.AppendTag(types.TokenId, []byte(tokenId))
+		resTags = resTags.AppendTag(types.TagTokenId, []byte(tokenId))
 	}
 	return resTags, nil
 }
 
-// Get Proposal from store by ProposalID
+// Get Proposal from store by TagProposalID
 func (keeper Keeper) GetProposal(ctx sdk.Context, proposalID uint64) Proposal {
 	store := ctx.KVStore(keeper.storeKey)
 	bz := store.Get(KeyProposal(proposalID))
@@ -175,7 +175,7 @@ func (keeper Keeper) DeleteProposal(ctx sdk.Context, proposalID uint64) {
 	store.Delete(KeyProposal(proposalID))
 }
 
-// Get Proposal from store by ProposalID
+// Get Proposal from store by TagProposalID
 func (keeper Keeper) GetProposalsFiltered(ctx sdk.Context, voterAddr sdk.AccAddress, depositorAddr sdk.AccAddress, status types.ProposalStatus, numLatest uint64) []Proposal {
 
 	maxProposalID, err := keeper.peekCurrentProposalID(ctx)
@@ -224,7 +224,7 @@ func (keeper Keeper) SetInitialProposalID(ctx sdk.Context, proposalID uint64) sd
 	store := ctx.KVStore(keeper.storeKey)
 	bz := store.Get(KeyNextProposalID)
 	if bz != nil {
-		return types.ErrInvalidGenesis(keeper.codespace, "Initial ProposalID already set")
+		return types.ErrInvalidGenesis(keeper.codespace, "Initial TagProposalID already set")
 	}
 	bz = keeper.cdc.MustMarshalBinaryLengthPrefixed(proposalID)
 	store.Set(KeyNextProposalID, bz)
@@ -241,7 +241,7 @@ func (keeper Keeper) GetLastProposalID(ctx sdk.Context) (proposalID uint64) {
 	return
 }
 
-// Gets the next available ProposalID and increments it
+// Gets the next available TagProposalID and increments it
 func (keeper Keeper) getNewProposalID(ctx sdk.Context) (proposalID uint64, err sdk.Error) {
 	store := ctx.KVStore(keeper.storeKey)
 	bz := store.Get(KeyNextProposalID)
@@ -254,7 +254,7 @@ func (keeper Keeper) getNewProposalID(ctx sdk.Context) (proposalID uint64, err s
 	return proposalID, nil
 }
 
-// Peeks the next available ProposalID without incrementing it
+// Peeks the next available TagProposalID without incrementing it
 func (keeper Keeper) peekCurrentProposalID(ctx sdk.Context) (proposalID uint64, err sdk.Error) {
 	store := ctx.KVStore(keeper.storeKey)
 	bz := store.Get(KeyNextProposalID)
@@ -501,7 +501,7 @@ func (keeper Keeper) ActiveProposalQueueIterator(ctx sdk.Context, endTime time.T
 	return store.Iterator(PrefixActiveProposalQueue, sdk.PrefixEndBytes(PrefixActiveProposalQueueTime(endTime)))
 }
 
-// Inserts a ProposalID into the active proposal queue at endTime
+// Inserts a TagProposalID into the active proposal queue at endTime
 func (keeper Keeper) InsertActiveProposalQueue(ctx sdk.Context, endTime time.Time, proposalID uint64) {
 	keeper.Metrics.ProposalStatus.With(types.ProposalIDLabel, strconv.FormatUint(proposalID, 10)).Set(1)
 	store := ctx.KVStore(keeper.storeKey)
@@ -549,7 +549,7 @@ func (keeper Keeper) PopActiveProposal(ctx sdk.Context, endTime time.Time, cb fu
 	}
 }
 
-// Inserts a ProposalID into the inactive proposal queue at endTime
+// Inserts a TagProposalID into the inactive proposal queue at endTime
 func (keeper Keeper) InsertInactiveProposalQueue(ctx sdk.Context, endTime time.Time, proposalID uint64) {
 	keeper.Metrics.ProposalStatus.With(types.ProposalIDLabel, strconv.FormatUint(proposalID, 10)).Set(0)
 	store := ctx.KVStore(keeper.storeKey)

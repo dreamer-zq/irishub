@@ -23,7 +23,7 @@ func init() {
 			types.ProposalTypeSoftwareUpgrade:   createSoftwareUpgradeInfo(),
 			types.ProposalTypeSystemHalt:        createSystemHaltInfo(),
 			types.ProposalTypeCommunityTaxUsage: createCommunityTaxUsageInfo(),
-			types.ProposalTypeTokenAddition:     createPlainTextInfo(),
+			types.ProposalTypeTokenAddition:     createTokenAdditionInfo(),
 		},
 	}
 }
