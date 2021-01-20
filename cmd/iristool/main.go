@@ -4,14 +4,22 @@ import (
 	"os"
 
 	"github.com/irisnet/irishub/app"
+	"github.com/irisnet/irishub/cmd/iristool/cmd"
 	debugcmd "github.com/irisnet/irishub/tools/debug"
+	sdk "github.com/irisnet/irishub/types"
 	"github.com/spf13/cobra"
-	"github.com/tendermint/tendermint/libs/cli"
+	"github.com/tendermint/tmlibs/cli"
 )
 
 func init() {
-	//	sdk.InitBech32Prefix()
-	rootCmd.AddCommand(debugcmd.RootCmd)
+	sdk.SetNetworkType("mainnet")
+	rootCmd.AddCommand(
+		debugcmd.RootCmd,
+		cmd.NewCheckerCmd(),
+	)
+
+	//rootCmd.PersistentFlags().String("home", "", "data home")
+	//viper.BindPFlags(rootCmd.PersistentFlags())
 }
 
 var rootCmd = &cobra.Command{
@@ -21,9 +29,8 @@ var rootCmd = &cobra.Command{
 }
 
 func main() {
-	executor := cli.PrepareMainCmd(rootCmd, "IRIS", app.DefaultNodeHome)
-	err := executor.Execute()
-	if err != nil {
+	executor := cli.PrepareBaseCmd(rootCmd, "IRIS", app.DefaultNodeHome)
+	if err := executor.Execute(); err != nil {
 		os.Exit(1)
 	}
 	os.Exit(0)

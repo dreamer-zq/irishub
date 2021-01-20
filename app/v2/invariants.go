@@ -11,14 +11,14 @@ import (
 
 func (p *ProtocolV2) runtimeInvariants() []sdk.Invariant {
 	return []sdk.Invariant{
-		bank.NonnegativeBalanceInvariant(p.accountMapper),
+		bank.NonnegativeBalanceInvariant(p.AccountMapper),
 
 		distr.ValAccumInvariants(p.distrKeeper, p.StakeKeeper),
 		distr.DelAccumInvariants(p.distrKeeper, p.StakeKeeper),
 		distr.CanWithdrawInvariant(p.distrKeeper, p.StakeKeeper),
 
-		stake.SupplyInvariants(p.bankKeeper, p.StakeKeeper,
-			p.feeKeeper, p.distrKeeper, p.accountMapper),
+		stake.SupplyInvariants(p.BankKeeper, p.StakeKeeper,
+			p.feeKeeper, p.distrKeeper, p.AccountMapper),
 		stake.NonNegativePowerInvariant(p.StakeKeeper),
 		stake.PositiveDelegationInvariant(p.StakeKeeper),
 		stake.DelegatorSharesInvariant(p.StakeKeeper),

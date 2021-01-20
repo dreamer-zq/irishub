@@ -40,9 +40,9 @@ type ProtocolV2 struct {
 	trackCoinFlow  bool
 
 	// Manage getting and setting accounts
-	accountMapper  auth.AccountKeeper
+	AccountMapper  auth.AccountKeeper
 	feeKeeper      auth.FeeKeeper
-	bankKeeper     bank.Keeper
+	BankKeeper     bank.Keeper
 	StakeKeeper    stake.Keeper
 	slashingKeeper slashing.Keeper
 	mintKeeper     mint.Keeper
@@ -197,7 +197,7 @@ func (p *ProtocolV2) ValidateTx(ctx sdk.Context, txBytes []byte, msgs []sdk.Msg)
 // create all Keepers
 func (p *ProtocolV2) configKeepers() {
 	// define the AccountKeeper
-	p.accountMapper = auth.NewAccountKeeper(
+	p.AccountMapper = auth.NewAccountKeeper(
 		p.cdc,
 		protocol.KeyAccount,   // target store
 		auth.ProtoBaseAccount, // prototype
@@ -209,9 +209,9 @@ func (p *ProtocolV2) configKeepers() {
 		protocol.KeyGuardian,
 		guardian.DefaultCodespace,
 	)
-	p.bankKeeper = bank.NewBaseKeeper(
+	p.BankKeeper = bank.NewBaseKeeper(
 		p.cdc,
-		p.accountMapper,
+		p.AccountMapper,
 	)
 	p.paramsKeeper = params.NewKeeper(
 		p.cdc,
@@ -224,19 +224,19 @@ func (p *ProtocolV2) configKeepers() {
 	stakeKeeper := stake.NewKeeper(
 		p.cdc,
 		protocol.KeyStake, protocol.TkeyStake,
-		p.bankKeeper, p.paramsKeeper.Subspace(stake.DefaultParamspace),
+		p.BankKeeper, p.paramsKeeper.Subspace(stake.DefaultParamspace),
 		stake.DefaultCodespace,
 		stake.PrometheusMetrics(p.config),
 	)
 	p.mintKeeper = mint.NewKeeper(p.cdc, protocol.KeyMint,
 		p.paramsKeeper.Subspace(mint.DefaultParamSpace),
-		p.bankKeeper, p.feeKeeper,
+		p.BankKeeper, p.feeKeeper,
 	)
 	p.distrKeeper = distr.NewKeeper(
 		p.cdc,
 		protocol.KeyDistr,
 		p.paramsKeeper.Subspace(distr.DefaultParamspace),
-		p.bankKeeper, &stakeKeeper, p.feeKeeper,
+		p.BankKeeper, &stakeKeeper, p.feeKeeper,
 		distr.DefaultCodespace, distr.PrometheusMetrics(p.config),
 	)
 	p.slashingKeeper = slashing.NewKeeper(
@@ -250,7 +250,7 @@ func (p *ProtocolV2) configKeepers() {
 	p.serviceKeeper = service.NewKeeper(
 		p.cdc,
 		protocol.KeyService,
-		p.bankKeeper,
+		p.BankKeeper,
 		p.guardianKeeper,
 		service.DefaultCodespace,
 		p.paramsKeeper.Subspace(service.DefaultParamSpace),
@@ -265,7 +265,7 @@ func (p *ProtocolV2) configKeepers() {
 
 	p.upgradeKeeper = upgrade.NewKeeper(p.cdc, protocol.KeyUpgrade, p.protocolKeeper, p.StakeKeeper, upgrade.PrometheusMetrics(p.config))
 
-	p.assetKeeper = asset.NewKeeper(p.cdc, protocol.KeyAsset, p.bankKeeper, asset.DefaultCodespace, p.paramsKeeper.Subspace(asset.DefaultParamSpace))
+	p.assetKeeper = asset.NewKeeper(p.cdc, protocol.KeyAsset, p.BankKeeper, asset.DefaultCodespace, p.paramsKeeper.Subspace(asset.DefaultParamSpace))
 
 	p.govKeeper = gov.NewKeeper(
 		protocol.KeyGov,
@@ -273,7 +273,7 @@ func (p *ProtocolV2) configKeepers() {
 		p.paramsKeeper.Subspace(gov.DefaultParamSpace),
 		p.paramsKeeper,
 		p.protocolKeeper,
-		p.bankKeeper,
+		p.BankKeeper,
 		p.distrKeeper,
 		p.guardianKeeper,
 		&stakeKeeper,
@@ -283,14 +283,14 @@ func (p *ProtocolV2) configKeepers() {
 	)
 
 	p.randKeeper = rand.NewKeeper(p.cdc, protocol.KeyRand, rand.DefaultCodespace)
-	p.coinswapKeeper = coinswap.NewKeeper(p.cdc, protocol.KeySwap, p.bankKeeper, p.accountMapper, p.paramsKeeper.Subspace(coinswap.DefaultParamSpace))
-	p.htlcKeeper = htlc.NewKeeper(p.cdc, protocol.KeyHtlc, p.bankKeeper, htlc.DefaultCodespace)
+	p.coinswapKeeper = coinswap.NewKeeper(p.cdc, protocol.KeySwap, p.BankKeeper, p.AccountMapper, p.paramsKeeper.Subspace(coinswap.DefaultParamSpace))
+	p.htlcKeeper = htlc.NewKeeper(p.cdc, protocol.KeyHtlc, p.BankKeeper, htlc.DefaultCodespace)
 }
 
 // configure all Routers
 func (p *ProtocolV2) configRouters() {
 	p.router.
-		AddRoute(protocol.BankRoute, bank.NewHandler(p.bankKeeper)).
+		AddRoute(protocol.BankRoute, bank.NewHandler(p.BankKeeper)).
 		AddRoute(protocol.StakeRoute, stake.NewHandler(p.StakeKeeper)).
 		AddRoute(protocol.SlashingRoute, slashing.NewHandler(p.slashingKeeper)).
 		AddRoute(protocol.DistrRoute, distr.NewHandler(p.distrKeeper)).
@@ -303,7 +303,7 @@ func (p *ProtocolV2) configRouters() {
 		AddRoute(protocol.HtlcRoute, htlc.NewHandler(p.htlcKeeper))
 
 	p.queryRouter.
-		AddRoute(protocol.AccountRoute, bank.NewQuerier(p.bankKeeper, p.cdc)).
+		AddRoute(protocol.AccountRoute, bank.NewQuerier(p.BankKeeper, p.cdc)).
 		AddRoute(protocol.GovRoute, gov.NewQuerier(p.govKeeper)).
 		AddRoute(protocol.StakeRoute, stake.NewQuerier(p.StakeKeeper, p.cdc)).
 		AddRoute(protocol.DistrRoute, distr.NewQuerier(p.distrKeeper)).
@@ -318,12 +318,12 @@ func (p *ProtocolV2) configRouters() {
 
 // configure all FeeHandlers
 func (p *ProtocolV2) configFeeHandlers() {
-	authAnteHandler := auth.NewAnteHandler(p.accountMapper, p.feeKeeper)
+	authAnteHandler := auth.NewAnteHandler(p.AccountMapper, p.feeKeeper)
 	assetAnteHandler := asset.NewAnteHandler(p.assetKeeper)
-	bankAnteHandler := bank.NewAnteHandler(p.accountMapper)
+	bankAnteHandler := bank.NewAnteHandler(p.AccountMapper)
 
 	p.anteHandlers = []sdk.AnteHandler{authAnteHandler, bankAnteHandler, assetAnteHandler}
-	p.feeRefundHandler = auth.NewFeeRefundHandler(p.accountMapper, p.feeKeeper)
+	p.feeRefundHandler = auth.NewFeeRefundHandler(p.AccountMapper, p.feeKeeper)
 	p.feePreprocessHandler = auth.NewFeePreprocessHandler(p.feeKeeper)
 }
 
@@ -412,14 +412,14 @@ func (p *ProtocolV2) InitChainer(ctx sdk.Context, DeliverTx sdk.DeliverTx, req a
 	})
 
 	// init system accounts
-	p.bankKeeper.AddCoins(ctx, auth.BurnedCoinsAccAddr, sdk.Coins{})
-	p.bankKeeper.AddCoins(ctx, auth.CommunityTaxCoinsAccAddr, sdk.Coins{})
+	p.BankKeeper.AddCoins(ctx, auth.BurnedCoinsAccAddr, sdk.Coins{})
+	p.BankKeeper.AddCoins(ctx, auth.CommunityTaxCoinsAccAddr, sdk.Coins{})
 
 	// load the accounts
 	for _, gacc := range genesisState.Accounts {
 		acc := gacc.ToAccount()
-		acc.AccountNumber = p.accountMapper.GetNextAccountNumber(ctx)
-		p.accountMapper.SetGenesisAccount(ctx, acc)
+		acc.AccountNumber = p.AccountMapper.GetNextAccountNumber(ctx)
+		p.AccountMapper.SetGenesisAccount(ctx, acc)
 	}
 
 	//upgrade.InitGenesis(ctx, p.upgradeKeeper, p.Router(), genesisState.UpgradeData)
@@ -430,7 +430,7 @@ func (p *ProtocolV2) InitChainer(ctx sdk.Context, DeliverTx sdk.DeliverTx, req a
 		panic(err)
 	}
 	gov.InitGenesis(ctx, p.govKeeper, genesisState.GovData)
-	auth.InitGenesis(ctx, p.feeKeeper, p.accountMapper, genesisState.AuthData)
+	auth.InitGenesis(ctx, p.feeKeeper, p.AccountMapper, genesisState.AuthData)
 	slashing.InitGenesis(ctx, p.slashingKeeper, genesisState.SlashingData, genesisState.StakeData)
 	mint.InitGenesis(ctx, p.mintKeeper, genesisState.MintData)
 	distr.InitGenesis(ctx, p.distrKeeper, genesisState.DistrData)

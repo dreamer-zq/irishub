@@ -37,7 +37,7 @@ func (p *ProtocolV2) ExportAppStateAndValidators(ctx sdk.Context, forZeroHeight 
 		accounts = append(accounts, account)
 		return false
 	}
-	p.accountMapper.IterateAccounts(ctx, appendAccount)
+	p.AccountMapper.IterateAccounts(ctx, appendAccount)
 	fileAccounts := []GenesisFileAccount{}
 	for _, acc := range accounts {
 		if acc.Coins == nil {
@@ -60,7 +60,7 @@ func (p *ProtocolV2) ExportAppStateAndValidators(ctx sdk.Context, forZeroHeight 
 
 	genState := NewGenesisFileState(
 		fileAccounts,
-		auth.ExportGenesis(ctx, p.feeKeeper, p.accountMapper),
+		auth.ExportGenesis(ctx, p.feeKeeper, p.AccountMapper),
 		stake.ExportGenesis(ctx, p.StakeKeeper),
 		mint.ExportGenesis(ctx, p.mintKeeper),
 		distr.ExportGenesis(ctx, p.distrKeeper),
